@@ -1,0 +1,399 @@
+// wideviner - Slint user interface.
+
+import { ScrollView } from "std-widgets.slint";
+
+// ---------------------------------------------------------------------------
+// Colours
+// ---------------------------------------------------------------------------
+global Theme {
+    out property <color> bg: #f4f5f7;
+    out property <color> card: #ffffff;
+    out property <color> border: #e2e5ea;
+    out property <color> text: #1f2328;
+    out property <color> muted: #6b7280;
+    out property <color> accent: #2f6feb;
+    out property <color> accent-hover: #2a63d4;
+    out property <color> accent-press: #1a5fd0;
+    out property <color> ok: #1a7f37;
+    out property <color> warn: #9a6700;
+    out property <color> danger: #d1242f;
+    out property <color> danger-hover: #b91c1c;
+    out property <color> danger-press: #a11616;
+    out property <color> idle: #9aa1ab;
+    out property <color> idle-soft: #eceef1;
+}
+
+// ---------------------------------------------------------------------------
+// Data
+// ---------------------------------------------------------------------------
+export struct InfoRow {
+    label: string,
+    value: string,
+}
+
+export struct BrowserRow {
+    title: string,
+    subtitle: string,
+    state: string,
+    // 0 = no Widevine, 1 = installed, 2 = incomplete
+    state-kind: int,
+}
+
+// ---------------------------------------------------------------------------
+// Building blocks
+// ---------------------------------------------------------------------------
+component Card inherits Rectangle {
+    background: Theme.card;
+    border-color: Theme.border;
+    border-width: 1px;
+    border-radius: 10px;
+}
+
+component Caption inherits Text {
+    color: Theme.muted;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+}
+
+component Dot inherits Rectangle {
+    in property <int> kind: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 4px;
+    background: kind == 1 ? Theme.ok : (kind == 2 ? Theme.warn : Theme.idle);
+}
+
+component ActionButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> primary: false;
+    in property <bool> danger: false;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    width: 116px;
+    height: 36px;
+    border-radius: 8px;
+    border-width: root.primary || root.danger ? 0px : 1px;
+    border-color: Theme.border;
+    background: !root.enabled ? Theme.idle-soft
+        : root.primary ? (touch.pressed ? Theme.accent-press
+            : (touch.has-hover ? Theme.accent-hover : Theme.accent))
+        : root.danger ? (touch.pressed ? Theme.danger-press
+            : (touch.has-hover ? Theme.danger-hover : Theme.danger))
+        : (touch.pressed ? #e9ebee : (touch.has-hover ? #f7f8fa : Theme.card));
+
+    Text {
+        text: root.label;
+        color: !root.enabled ? Theme.idle : (root.primary || root.danger ? #ffffff : Theme.text);
+        font-size: 13px;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Main window
+// ---------------------------------------------------------------------------
+export component MainWindow inherits Window {
+    title: "wideviner";
+    width: 820px;
+    height: 660px;
+    background: Theme.bg;
+
+    in property <string> app-version: "0.3.0";
+    in property <[InfoRow]> system-rows;
+    in property <[BrowserRow]> browsers;
+    in-out property <int> selected-index: 0;
+    in property <string> status: "";
+    in property <bool> busy: false;
+    in property <bool> has-selection: browsers.length > 0;
+
+    callback refresh();
+    callback install();
+    callback update();
+    callback remove();
+
+    VerticalLayout {
+        padding: 22px;
+        spacing: 16px;
+
+        // -- header ---------------------------------------------------------
+        HorizontalLayout {
+            spacing: 12px;
+
+            VerticalLayout {
+                spacing: 2px;
+                Text {
+                    text: "wideviner";
+                    color: Theme.text;
+                    font-size: 24px;
+                    font-weight: 800;
+                    letter-spacing: -0.5px;
+                }
+                Text {
+                    text: "Widevine CDM installer for Chromium and Firefox";
+                    color: Theme.muted;
+                    font-size: 13px;
+                }
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+
+            Text {
+                text: "v" + root.app-version;
+                color: Theme.muted;
+                font-size: 12px;
+                vertical-alignment: bottom;
+            }
+        }
+
+        // -- system ---------------------------------------------------------
+        Card {
+            VerticalLayout {
+                padding: 16px;
+                spacing: 10px;
+
+                Caption { text: "SYSTEM"; }
+
+                for row in root.system-rows : HorizontalLayout {
+                    spacing: 12px;
+                    Text {
+                        text: row.label;
+                        color: Theme.muted;
+                        font-size: 13px;
+                        width: 150px;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: row.value;
+                        color: Theme.text;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        // -- browsers -------------------------------------------------------
+        VerticalLayout {
+            spacing: 8px;
+            Caption { text: "BROWSERS"; }
+
+            ScrollView {
+                VerticalLayout {
+                    spacing: 8px;
+
+                    if root.browsers.length == 0 : Card {
+                        height: 64px;
+                        Text {
+                            text: "No supported browser found.";
+                            color: Theme.muted;
+                            font-size: 13px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    for b[i] in root.browsers : Rectangle {
+                        height: 62px;
+                        border-radius: 10px;
+                        border-width: root.selected-index == i ? 2px : 1px;
+                        border-color: root.selected-index == i ? Theme.accent : Theme.border;
+                        background: root.selected-index == i ? #f2f6ff : Theme.card;
+
+                        HorizontalLayout {
+                            padding-left: 16px;
+                            padding-right: 16px;
+                            spacing: 12px;
+
+                            VerticalLayout {
+                                alignment: center;
+                                spacing: 3px;
+                                Text {
+                                    text: b.title;
+                                    color: Theme.text;
+                                    font-size: 14px;
+                                    font-weight: 600;
+                                }
+                                Text {
+                                    text: b.subtitle;
+                                    color: Theme.muted;
+                                    font-size: 12px;
+                                }
+                            }
+
+                            Rectangle { horizontal-stretch: 1; }
+
+                            HorizontalLayout {
+                                alignment: center;
+                                spacing: 7px;
+                                Dot { kind: b.state-kind; }
+                                Text {
+                                    text: b.state;
+                                    color: b.state-kind == 1 ? Theme.ok
+                                        : (b.state-kind == 2 ? Theme.warn : Theme.muted);
+                                    font-size: 12px;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+
+                        TouchArea {
+                            clicked => { root.selected-index = i; }
+                        }
+                    }
+                }
+            }
+        }
+
+        // -- actions --------------------------------------------------------
+        HorizontalLayout {
+            spacing: 10px;
+
+            ActionButton {
+                label: "Install";
+                primary: true;
+                enabled: !root.busy && root.has-selection;
+                clicked => { root.install(); }
+            }
+            ActionButton {
+                label: "Update";
+                enabled: !root.busy && root.has-selection;
+                clicked => { root.update(); }
+            }
+            ActionButton {
+                label: "Remove";
+                danger: true;
+                enabled: !root.busy && root.has-selection;
+                clicked => { root.remove(); }
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+
+            ActionButton {
+                label: "Refresh";
+                enabled: !root.busy;
+                clicked => { root.refresh(); }
+            }
+        }
+
+        // -- status ---------------------------------------------------------
+        Text {
+            text: root.status;
+            color: Theme.muted;
+            font-size: 12px;
+            wrap: word-wrap;
+            min-height: 16px;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Progress window
+// ---------------------------------------------------------------------------
+export component ProgressWindow inherits Window {
+    title: "wideviner";
+    width: 660px;
+    height: 480px;
+    background: Theme.bg;
+
+    in property <string> heading: "Working";
+    in property <string> detail: "";
+    in property <float> progress: 0.0;
+    in property <bool> indeterminate: false;
+    in property <string> log-text: "";
+    in property <bool> finished: false;
+
+    callback dismiss();
+
+    VerticalLayout {
+        padding: 22px;
+        spacing: 16px;
+
+        // -- heading --------------------------------------------------------
+        VerticalLayout {
+            spacing: 3px;
+            Text {
+                text: root.heading;
+                color: Theme.text;
+                font-size: 19px;
+                font-weight: 700;
+            }
+            Text {
+                text: root.detail;
+                color: Theme.muted;
+                font-size: 13px;
+            }
+        }
+
+        // -- progress -------------------------------------------------------
+        Card {
+            VerticalLayout {
+                padding: 16px;
+                spacing: 10px;
+
+                Text {
+                    text: root.indeterminate ? "Working ..."
+                        : "\{round(root.progress * 100)}%";
+                    color: Theme.text;
+                    font-size: 13px;
+                    font-weight: 600;
+                }
+
+                Rectangle {
+                    height: 8px;
+                    border-radius: 4px;
+                    background: Theme.idle-soft;
+
+                    Rectangle {
+                        width: max(0px, parent.width * root.progress);
+                        height: parent.height;
+                        border-radius: 4px;
+                        background: root.finished ? Theme.ok : Theme.accent;
+                        animate width { duration: 180ms; easing: ease-out; }
+                    }
+                }
+            }
+        }
+
+        // -- log ------------------------------------------------------------
+        Card {
+            VerticalLayout {
+                padding: 14px;
+                spacing: 8px;
+                Caption { text: "LOG"; }
+
+                ScrollView {
+                    content-y: 100000px;
+
+                    Text {
+                        text: root.log-text;
+                        color: Theme.text;
+                        font-size: 12px;
+                        font-family: "monospace";
+                        wrap: word-wrap;
+                        vertical-alignment: top;
+                    }
+                }
+            }
+        }
+
+        // -- footer ---------------------------------------------------------
+        HorizontalLayout {
+            Rectangle { horizontal-stretch: 1; }
+            ActionButton {
+                label: root.finished ? "Close" : "Cancel";
+                enabled: root.finished;
+                clicked => { root.dismiss(); }
+            }
+        }
+    }
+}

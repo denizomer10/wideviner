@@ -1,81 +1,103 @@
 # wideviner
 
-**Widevine CDM installer for Chromium and Firefox on Linux and Windows.**
+**Widevine CDM installer for Chromium and Firefox — a native desktop app in Rust, with a Slint UI.**
 
 `wideviner` finds the browsers installed on your system, obtains the Widevine
 CDM from Google's official packages and installs it where each browser expects
 it. This makes DRM protected content — Netflix, Spotify, Amazon Prime Video and
 friends — playable.
 
+The application has a small, modern interface with three actions:
+
 ```
-  wideviner 0.2.0
-  Widevine CDM installer for Chromium and Firefox
-  -----------------
-==> System information
-    Distribution:                Debian GNU/Linux 13 (trixie)
-    Architecture:                x86_64 -> x86_64 (amd64)
-    ...
-Main menu
-  [1] Install Widevine
-  [2] Update Widevine
-  [3] System information
-  [4] Exit
+┌──────────────────────────────────────────────────────────────┐
+│  wideviner                                   Widevine CDM …  │
+│                                                              │
+│  SYSTEM                                                      │
+│  Distribution   Debian GNU/Linux 13 (trixie)                 │
+│  Architecture   x86_64 -> x86_64 (amd64)                     │
+│  User           pc (admin: no, sudo: yes)                    │
+│                                                              │
+│  BROWSERS                                                    │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │ chromium-browser-unstable 155.0.8054.0      ● Widevine │  │
+│  │ Firefox 128.0                               ○ No Wide… │  │
+│  └────────────────────────────────────────────────────────┘  │
+│                                                              │
+│  [ Install ] [ Update ] [ Remove ]            [ Refresh ]    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+Pressing **Install**, **Update** or **Remove** opens a second window showing a
+progress bar and a live log:
+
+```
+┌──────────────────────────────────────────────┐
+│  Installing Widevine                         │
+│  chromium-browser-unstable 155.0.8054.0      │
+│                                              │
+│  62%                                         │
+│  ███████████████░░░░░░░░░░░                  │
+│                                              │
+│  LOG                                         │
+│  > Installing Widevine                       │
+│  > Downloading the Widevine CDM …            │
+│  > 14.9 MiB / 24.0 MiB                       │
+└──────────────────────────────────────────────┘
 ```
 
 ## Requirements
 
-- **Python 3.9 or newer** — standard library only, no dependencies
+- **Rust 1.92 or newer** and Cargo (the Slint UI toolkit requires it)
 - **Linux** (x86_64, ARM64) or **Windows** (x86_64, ARM64, x86)
 - **An internet connection** — the CDM (~24 MB) is downloaded from Google
 - **Administrator rights** for a system wide installation; a user level
   installation needs none
 
-## Installation
+On Linux the Slint windowing backend needs the usual desktop development
+packages (fontconfig, xkbcommon and OpenGL). They are already present on most
+desktop systems; if the build complains, install them:
 
-There is nothing to build or install — clone the repository and run the script:
+```bash
+# Debian / Ubuntu
+sudo apt install build-essential pkg-config libfontconfig1-dev libxkbcommon-dev libgl1-mesa-dev
+
+# Fedora
+sudo dnf install gcc-c++ pkgconf-pkg-config fontconfig-devel libxkbcommon-devel mesa-libGL-devel
+```
+
+## Building and running
 
 ```bash
 git clone https://github.com/denizomer10/wideviner.git
 cd wideviner
-python3 wideviner.py
+cargo run --release
 ```
+
+The binary ends up in `target/release/wideviner`.
 
 ## Usage
 
-### Interactive
+Run the application and press **Install**. The tool finds the browsers itself;
+select the one you want in the list and use the buttons:
 
-```bash
-python3 wideviner.py
-```
-
-The menu offers to install or update Widevine, or to print system information.
-The tool finds the browsers itself, asks which one to use when there are
-several, and downloads the CDM from Google.
-
-### Command line
-
-```bash
-python3 wideviner.py --install     # install without the menu
-python3 wideviner.py --update      # update an existing installation
-python3 wideviner.py --info        # only print system information
-```
-
-| Option | Description |
+| Button | What it does |
 |---|---|
-| `--install` / `--update` | Skip the menu and install / update directly |
-| `--info` | Only print system information |
-| `--target PATH` | Use an explicit browser binary or directory |
-| `--cache-dir PATH` | Where to keep the downloaded package |
-| `--source auto\|deb\|mozilla` | Which CDM source to use |
-| `--deep` | Walk the usual roots for browsers |
-| `--refresh` | Ignore the cached package and download again |
-| `--user` | Install for the current user only |
-| `--force` | Install even if Widevine is already up to date |
-| `--dry-run` | Show what would be done, write nothing |
-| `--yes` | Answer yes to all questions |
-| `--no-color`, `--quiet` | Disable colours / only print errors |
+| **Install** | Downloads the current Widevine CDM and installs it into the selected browser |
+| **Update** | Same, but first checks whether the installed CDM is already current and skips the download if so |
+| **Remove** | Deletes the CDM and the associated hint file / prefs from the selected browser |
+| **Refresh** | Scans the system again and rebuilds the browser list |
 
 **Restart the browser after installing** — the CDM is only picked up at startup.
+
+### Where the CDM is installed
+
+- **System wide** (when the browser directory is writable, or when running as
+  root): right next to the browser binary, in `WidevineCdm/`. On Linux a hint
+  file in the profile points Chromium at the CDM as well.
+- **User level** (otherwise): inside the browser's profile, which needs no
+  administrator rights. This is the usual case for distribution packages that
+  live in a root-owned directory such as `/opt`.
 
 ## Supported browsers
 
@@ -89,12 +111,6 @@ python3 wideviner.py --info        # only print system information
 Google Chrome, Microsoft Edge, Opera, Vivaldi and Brave are deliberately **not**
 touched: they already ship Widevine, and copying a second, unsigned copy of a
 proprietary DRM component into a third-party product is legally questionable.
-Pointing `--target` at one of them is rejected:
-
-```
-$ wideviner --install --target /opt/google/chrome
-[!] no supported browser found.
-```
 
 Firefox downloads Widevine by itself as well, so the tool is mainly useful for
 **Chromium** builds (which ship without it), for updating an outdated CDM, and
@@ -126,16 +142,9 @@ published — but it is only ever installed into open source browsers.
    hash.
 4. **Installation** — the CDM is written to `WidevineCdm/` next to the browser
    binary, or to the profile when a system wide installation is not possible.
-   Flatpak and Snap applications are always installed into their own profile:
-   their deployment is an immutable image, so writing into it would corrupt the
-   application. On Linux a hint file in the profile points Chromium at the CDM;
-   for Firefox the CDM is installed as a Gecko Media Plugin together with the
-   required prefs.
-
-   A CDM only counts as already installed when both its manifest and the
-   platform specific library are present. A manifest without a library, or one
-   built for another architecture, is replaced instead of being mistaken for a
-   working installation.
+   On Linux a hint file in the profile points Chromium at the CDM; for Firefox
+   the CDM is installed as a Gecko Media Plugin together with the required
+   prefs.
 
 Only these files are ever taken from a package:
 
@@ -160,8 +169,8 @@ Expected: `Registering hinted Widevine 4.10.3112.0` (Linux) or
 
 Headless mode uses its own profile directory (`<profile>-headless`) unless
 `--user-data-dir` is given explicitly, so a **user level** installation is only
-seen when the real profile is passed — the one wideviner reports after
-installing (`~/.config/chromium-clang` for the official Chromium Linux builds):
+seen when the real profile is passed (`~/.config/chromium-clang` for the
+official Chromium Linux builds):
 
 ```bash
 chromium --headless=new --user-data-dir="$HOME/.config/chromium-clang" \
@@ -209,7 +218,7 @@ installed correctly.
   plugin directory (`echo $MOZ_GMP_PATH`, or `set MOZ_GMP_PATH` on Windows).
   A new login (Linux) or a new process (Windows) is needed after the change.
 - **Permission errors** — A system wide install needs administrator rights.
-  Use `--user` for the user level installation instead.
+  Without them the CDM goes into the profile instead, which works just as well.
 - **ARM64** — the official Chrome Linux arm64 package is used on Linux (not a
   ChromeOS image); on Windows the Google CRX build for that architecture is
   used.
@@ -220,9 +229,6 @@ installed correctly.
 |---|---|
 | Linux | Tested end to end — Chromium logs `Registering hinted Widevine ...` and a real `requestMediaKeySystemAccess()` query returns `WIDEVINE_OK` |
 | Windows | Implemented, not tested |
-
-If something does not work on Windows, `--dry-run` plus the `System
-information` output is the most useful thing to report.
 
 ## Legal notice
 
