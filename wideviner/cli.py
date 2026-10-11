@@ -56,6 +56,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--user", action="store_true", help="install for the current user only"
     )
     parser.add_argument(
+        "--force",
+        action="store_true",
+        help="install even if Widevine is already up to date",
+    )
+    parser.add_argument(
         "--dry-run", action="store_true", help="show what would be done"
     )
     parser.add_argument(
@@ -220,6 +225,8 @@ def _perform_install(
 
 def _needs_admin(target, si: SystemInfo) -> bool:
     """Check whether a system wide installation would need elevation."""
+    if getattr(target, "source", "") in ("flatpak", "snap"):
+        return False  # the CDM always goes into the user's profile
     if target.kind == "firefox":
         if not si.is_linux:
             return False  # the profile based install never needs elevation
@@ -322,7 +329,8 @@ def flow_update(ui: UI, si: SystemInfo, args: argparse.Namespace) -> bool:
     ui.field("available widevine", payload.version or "unknown")
 
     if (
-        installed
+        not args.force
+        and installed
         and payload.version
         and widevine.version_key(payload.version) <= widevine.version_key(installed)
     ):

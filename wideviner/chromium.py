@@ -67,6 +67,16 @@ class Browser:
         return "chromium"
 
     @property
+    def sandboxed(self) -> bool:
+        """True for Flatpak/Snap apps whose files live in an immutable image.
+
+        Their deployment is content addressed and verified by the runtime, so
+        writing the CDM into it corrupts the application. The CDM has to go
+        into the user's profile instead.
+        """
+        return self.source in ("flatpak", "snap")
+
+    @property
     def executable(self) -> Path:
         """The actual browser binary.
 
@@ -100,14 +110,19 @@ class Browser:
         return self.user_data_dir / C.CDM_DIR_NAME / version
 
     # -- state -------------------------------------------------------------
-    def detect_widevine(self) -> None:
-        """Look for an already installed Widevine CDM."""
-        version = _manifest_version(self.bundled_cdm_dir / C.CDM_MANIFEST_NAME)
-        if version:
-            self.widevine_version = version
-            self.widevine_path = self.bundled_cdm_dir
-            return
+    def detect_widevine(self, cdm: dict | None = None) -> None:
+        """Look for an already installed, usable Widevine CDM.
 
+        A CDM only counts as installed when its manifest *and* the platform
+        specific library are present. Distribution packages sometimes ship a
+        manifest without the library, or with a library built for another
+        architecture; neither must stop wideviner from installing a working
+        CDM.
+        """
+        self.widevine_version = ""
+        self.widevine_path = None
+
+        candidates = [self.bundled_cdm_dir]
         hint = self.hint_file_path()
         if hint is not None and hint.is_file():
             try:
@@ -116,15 +131,22 @@ class Browser:
                 data = {}
             path = data.get("Path") if isinstance(data, dict) else None
             if isinstance(path, str) and path:
-                cdm_dir = Path(path)
-                version = _manifest_version(cdm_dir / C.CDM_MANIFEST_NAME)
-                if version:
-                    self.widevine_version = version
-                    self.widevine_path = cdm_dir
-                    return
+                candidates.append(Path(path))
 
-        self.widevine_version = ""
-        self.widevine_path = None
+        incomplete = False
+        for cdm_dir in candidates:
+            version = _usable_cdm_version(cdm_dir, cdm)
+            if version:
+                self.widevine_version = version
+                self.widevine_path = cdm_dir
+                return
+            if _manifest_version(cdm_dir / C.CDM_MANIFEST_NAME):
+                incomplete = True
+
+        if incomplete:
+            self.notes.append(
+                "an incomplete Widevine CDM is present and will be replaced"
+            )
 
     def describe(self) -> str:
         parts = [self.name]
@@ -157,6 +179,27 @@ def _manifest_version(path: Path) -> str:
         return ""
     version = data.get("version") if isinstance(data, dict) else None
     return version if isinstance(version, str) else ""
+
+
+def _usable_cdm_version(cdm_dir: Path, cdm: dict | None) -> str:
+    """Return the CDM version when *cdm_dir* holds a usable CDM, else "".
+
+    When *cdm* (the platform layout from :mod:`constants`) is given, the
+    platform specific library has to exist as well, so that a manifest without
+    a library - or one for a different architecture - is not mistaken for a
+    working installation.
+    """
+    version = _manifest_version(cdm_dir / C.CDM_MANIFEST_NAME)
+    if not version:
+        return ""
+    if cdm:
+        platform_dir = cdm.get("dir")
+        library = cdm.get("lib")
+        if platform_dir and library:
+            library_path = cdm_dir / C.CDM_PLATFORM_DIR / platform_dir / library
+            if not library_path.is_file():
+                return ""
+    return version
 
 
 def _probe_version(binary: Path) -> str:
@@ -656,7 +699,7 @@ def _build_browser(
         notes=list(notes or []),
     )
     browser.writable = _is_writable(module_dir)
-    browser.detect_widevine()
+    browser.detect_widevine(si.cdm)
     return browser
 
 
@@ -704,7 +747,7 @@ def _flatpak_browsers(si: SystemInfo) -> list[Browser]:
             notes=[f"Flatpak application {app_id} ({installation})"],
         )
         browser.writable = False
-        browser.detect_widevine()
+        browser.detect_widevine(si.cdm)
         browsers.append(browser)
     return browsers
 
@@ -744,7 +787,7 @@ def _snap_browsers(si: SystemInfo) -> list[Browser]:
             notes=[f"Snap package {snap_name}"],
         )
         browser.writable = False
-        browser.detect_widevine()
+        browser.detect_widevine(si.cdm)
         browsers.append(browser)
     return browsers
 

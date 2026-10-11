@@ -70,6 +70,7 @@ python3 wideviner.py --info        # only print system information
 | `--deep` | Walk the usual roots for browsers |
 | `--refresh` | Ignore the cached package and download again |
 | `--user` | Install for the current user only |
+| `--force` | Install even if Widevine is already up to date |
 | `--dry-run` | Show what would be done, write nothing |
 | `--yes` | Answer yes to all questions |
 | `--no-color`, `--quiet` | Disable colours / only print errors |
@@ -125,9 +126,16 @@ published — but it is only ever installed into open source browsers.
    hash.
 4. **Installation** — the CDM is written to `WidevineCdm/` next to the browser
    binary, or to the profile when a system wide installation is not possible.
-   On Linux a hint file in the profile points Chromium at the CDM; for Firefox
-   the CDM is installed as a Gecko Media Plugin together with the required
-   prefs.
+   Flatpak and Snap applications are always installed into their own profile:
+   their deployment is an immutable image, so writing into it would corrupt the
+   application. On Linux a hint file in the profile points Chromium at the CDM;
+   for Firefox the CDM is installed as a Gecko Media Plugin together with the
+   required prefs.
+
+   A CDM only counts as already installed when both its manifest and the
+   platform specific library are present. A manifest without a library, or one
+   built for another architecture, is replaced instead of being mistaken for a
+   working installation.
 
 Only these files are ever taken from a package:
 

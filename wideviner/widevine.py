@@ -467,15 +467,45 @@ def fetch_cdm(
 # ---------------------------------------------------------------------------
 # Installing
 # ---------------------------------------------------------------------------
-def _write_files(files: dict[str, bytes], target: Path) -> None:
-    target.mkdir(parents=True, exist_ok=True)
+def _chown(path: Path, owner: tuple[int, int]) -> None:
+    try:
+        os.chown(path, owner[0], owner[1])
+    except (OSError, AttributeError, NotImplementedError):
+        pass
+
+
+def _mkdir(path: Path, owner: tuple[int, int] | None = None) -> None:
+    """Create *path* (and its parents) and hand new directories to *owner*.
+
+    When wideviner runs through sudo, directories created for the invoking user
+    would otherwise be owned by root, which breaks the browser profile - and,
+    for Flatpak, the application sandbox.
+    """
+    missing: list[Path] = []
+    probe = path
+    while not probe.exists():
+        missing.append(probe)
+        parent = probe.parent
+        if parent == probe:
+            break
+        probe = parent
+    path.mkdir(parents=True, exist_ok=True)
+    if owner is not None:
+        for directory in reversed(missing):
+            _chown(directory, owner)
+
+
+def _write_files(
+    files: dict[str, bytes], target: Path, owner: tuple[int, int] | None = None
+) -> None:
+    _mkdir(target, owner)
     try:
         os.chmod(target, 0o755)
     except OSError:
         pass
     for relative, content in files.items():
         destination = target / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
+        _mkdir(destination.parent, owner)
         destination.write_bytes(content)
         try:
             os.chmod(destination, 0o644)
@@ -483,24 +513,24 @@ def _write_files(files: dict[str, bytes], target: Path) -> None:
             pass
 
 
-def write_hint_file(user_data_dir: Path, cdm_dir: Path, version: str) -> Path:
+def write_hint_file(
+    user_data_dir: Path,
+    cdm_dir: Path,
+    version: str,
+    owner: tuple[int, int] | None = None,
+) -> Path:
     """Write the Chromium CDM hint file pointing at *cdm_dir* (Linux only)."""
     hint_dir = user_data_dir / C.CDM_DIR_NAME
-    hint_dir.mkdir(parents=True, exist_ok=True)
+    _mkdir(hint_dir, owner)
     hint_path = hint_dir / C.HINT_FILE_NAME
     payload = {
         "Path": os.path.abspath(str(cdm_dir)),
         "LastBundledVersion": version,
     }
     hint_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    if owner is not None:
+        _chown(hint_path, owner)
     return hint_path
-
-
-def _chown(path: Path, owner: tuple[int, int]) -> None:
-    try:
-        os.chown(path, owner[0], owner[1])
-    except (OSError, AttributeError, NotImplementedError):
-        pass
 
 
 def _chown_tree(path: Path, owner: tuple[int, int]) -> None:
@@ -522,13 +552,16 @@ def install(
 ) -> InstallResult:
     """Install the CDM for *browser*.
 
-    The CDM always goes into ``<browser directory>/WidevineCdm``. On Linux the
-    hint file in the profile is written as well, because Chromium builds with
-    the component updater look for it there. That mechanism does not exist on
-    Windows, so no hint file is written there.
+    The CDM goes into ``<browser directory>/WidevineCdm`` when that directory
+    can be written, and into the profile otherwise. Flatpak and Snap apps are
+    always installed into the profile: their deployment is an immutable image
+    and writing into it corrupts the application. On Linux the hint file in the
+    profile is written as well, because Chromium builds with the component
+    updater look for it there. That mechanism does not exist on Windows, so no
+    hint file is written there.
     """
     version = payload.version or "unknown"
-    can_write_system = si.is_admin or browser.writable
+    can_write_system = (si.is_admin or browser.writable) and not browser.sandboxed
 
     if not user_only and can_write_system:
         target = browser.bundled_cdm_dir
@@ -546,15 +579,19 @@ def install(
             ok=True, version=version, path=target, mode=mode, message="dry run"
         )
 
+    # Only a profile installation belongs to the invoking user; a system wide
+    # CDM must stay owned by root.
     try:
-        _write_files(payload.files, target)
+        _write_files(payload.files, target, owner if mode == "user" else None)
     except OSError as exc:
         return InstallResult(ok=False, message=f"cannot write to {target}: {exc}")
 
     hint_file: Path | None = None
     if si.is_linux and browser.user_data_dir is not None:
         try:
-            hint_file = write_hint_file(browser.user_data_dir, target, version)
+            hint_file = write_hint_file(
+                browser.user_data_dir, target, version, owner
+            )
         except OSError as exc:
             ui.warn(f"could not write the CDM hint file: {exc}")
 

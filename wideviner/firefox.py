@@ -59,6 +59,15 @@ class Firefox:
     def kind(self) -> str:
         return "firefox"
 
+    @property
+    def sandboxed(self) -> bool:
+        """True for Flatpak/Snap apps whose files live in an immutable image.
+
+        A sandboxed Firefox cannot see the host's Mozilla plugin directories,
+        so the GMP has to go into its own profile.
+        """
+        return self.source in ("flatpak", "snap")
+
     def gmp_dirs(self) -> list[Path]:
         """Directories that may hold the Widevine GMP, in search order."""
         dirs: list[Path] = []
@@ -659,7 +668,7 @@ def install(
     library = si.lib_name or firefox.library
 
     system_gmp: Path | None = None
-    if si.is_linux:
+    if si.is_linux and not firefox.sandboxed:
         for base in C.MOZILLA_PLUGIN_DIRS:
             candidate = Path(base)
             if candidate.is_dir() and (si.is_admin or os.access(candidate, os.W_OK)):
