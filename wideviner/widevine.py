@@ -480,6 +480,10 @@ def _mkdir(path: Path, owner: tuple[int, int] | None = None) -> None:
     When wideviner runs through sudo, directories created for the invoking user
     would otherwise be owned by root, which breaks the browser profile - and,
     for Flatpak, the application sandbox.
+
+    A dangling symlink or a plain file with the same name - distribution
+    packages ship such placeholders - is replaced by a real directory, because
+    ``mkdir(exist_ok=True)`` only tolerates an existing *directory*.
     """
     missing: list[Path] = []
     probe = path
@@ -489,7 +493,14 @@ def _mkdir(path: Path, owner: tuple[int, int] | None = None) -> None:
         if parent == probe:
             break
         probe = parent
-    path.mkdir(parents=True, exist_ok=True)
+
+    if not path.is_dir():
+        if path.is_symlink() or path.exists():
+            path.unlink()
+        path.mkdir(parents=True, exist_ok=True)
+        if path not in missing:
+            missing.append(path)
+
     if owner is not None:
         for directory in reversed(missing):
             _chown(directory, owner)
