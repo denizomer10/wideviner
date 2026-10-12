@@ -2,7 +2,7 @@
 
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 use crate::constants as C;
@@ -91,17 +91,13 @@ impl SystemInfo {
         self.os_name == "linux"
     }
 
-    pub fn is_windows(&self) -> bool {
-        self.os_name == "windows"
-    }
-
     pub fn arch_supported(&self) -> bool {
-        C::cdm_platform(&self.os_name, self.arch).is_some()
+        C::cdm_platform(self.arch).is_some()
     }
 
     /// Layout of the Widevine CDM for this platform.
     pub fn cdm(&self) -> Option<&'static C::CdmPlatform> {
-        C::cdm_platform(&self.os_name, self.arch)
+        C::cdm_platform(self.arch)
     }
 
     pub fn lib_name(&self) -> &'static str {
@@ -114,12 +110,6 @@ impl SystemInfo {
 
     /// Directory that holds browser profiles.
     pub fn config_home(&self) -> PathBuf {
-        if self.is_windows() {
-            if let Some(local) = env::var_os("LOCALAPPDATA") {
-                return PathBuf::from(local);
-            }
-            return self.home.join("AppData").join("Local");
-        }
         if let Some(xdg) = env::var_os("XDG_CONFIG_HOME") {
             return PathBuf::from(xdg);
         }
@@ -218,24 +208,12 @@ pub fn which(name: &str) -> Option<PathBuf> {
 }
 
 fn is_admin() -> bool {
-    if cfg!(windows) {
-        // Writing into System32 only succeeds with administrator rights.
-        let probe = Path::new(r"C:\Windows\System32\wideviner-probe.tmp");
-        match fs::write(probe, b"") {
-            Ok(()) => {
-                let _ = fs::remove_file(probe);
-                true
-            }
-            Err(_) => false,
-        }
-    } else {
-        Command::new("id")
-            .arg("-u")
-            .output()
-            .ok()
-            .map(|out| String::from_utf8_lossy(&out.stdout).trim() == "0")
-            .unwrap_or(false)
-    }
+    Command::new("id")
+        .arg("-u")
+        .output()
+        .ok()
+        .map(|out| String::from_utf8_lossy(&out.stdout).trim() == "0")
+        .unwrap_or(false)
 }
 
 /// Return `(name, uid, gid, home)` of the user that invoked sudo, if any.
@@ -260,15 +238,9 @@ pub fn invoking_user() -> Option<(String, u32, u32, PathBuf)> {
 pub fn detect() -> SystemInfo {
     let mut info = SystemInfo::default();
 
-    if cfg!(target_os = "linux") {
-        info.os_name = "linux".into();
-    } else if cfg!(windows) {
-        info.os_name = "windows".into();
-    } else {
-        info.os_name = env::consts::OS.into();
-    }
+    info.os_name = "linux".into();
 
-    if info.is_linux() {
+    {
         let release = read_os_release();
         info.os_id = {
             let id = os_release_value(&release, "ID");
@@ -300,10 +272,6 @@ pub fn detect() -> SystemInfo {
         info.family = detect_family(&info.os_id, &info.os_like);
         info.flatpak = which("flatpak").is_some();
         info.snap = which("snap").is_some();
-    } else if info.is_windows() {
-        info.os_id = "windows".into();
-        info.pretty_name = format!("Windows {}", env::consts::OS);
-        info.family = "windows".into();
     }
 
     info.machine = uname_machine();
@@ -321,9 +289,7 @@ pub fn detect() -> SystemInfo {
         info.user = name;
         info.home = home;
     } else {
-        info.user = env::var("USER")
-            .or_else(|_| env::var("USERNAME"))
-            .unwrap_or_default();
+        info.user = env::var("USER").unwrap_or_default();
         info.home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
     }
 
@@ -356,48 +322,41 @@ fn uname_release() -> String {
 pub fn report(info: &SystemInfo) -> Vec<(String, String)> {
     let mut rows: Vec<(String, String)> = Vec::new();
 
-    if info.is_linux() {
-        rows.push(("Distribution".into(), info.pretty_name.clone()));
-        let family = if info.package_manager.is_empty() {
-            info.family.clone()
-        } else {
-            format!("{} [{}]", info.family, info.package_manager)
-        };
-        rows.push(("Family".into(), family));
+    rows.push(("Distribution".into(), info.pretty_name.clone()));
+    let family = if info.package_manager.is_empty() {
+        info.family.clone()
     } else {
-        rows.push(("Operating system".into(), info.pretty_name.clone()));
-        rows.push(("Family".into(), info.family.clone()));
-    }
+        format!("{} [{}]", info.family, info.package_manager)
+    };
+    rows.push(("Family".into(), family));
 
     rows.push((
         "Architecture".into(),
         format!("{} -> {}", info.machine, info.arch_label()),
     ));
     rows.push(("Kernel".into(), info.kernel.clone()));
-    if info.is_linux() {
-        rows.push((
-            "glibc".into(),
-            if info.glibc.is_empty() {
-                "unknown".into()
-            } else {
-                info.glibc.clone()
-            },
-        ));
-        let session = [info.session_type.as_str(), info.desktop.as_str()]
-            .iter()
-            .filter(|s| !s.is_empty())
-            .cloned()
-            .collect::<Vec<_>>()
-            .join(" ");
-        rows.push((
-            "Session".into(),
-            if session.is_empty() {
-                "unknown".into()
-            } else {
-                session
-            },
-        ));
-    }
+    rows.push((
+        "glibc".into(),
+        if info.glibc.is_empty() {
+            "unknown".into()
+        } else {
+            info.glibc.clone()
+        },
+    ));
+    let session = [info.session_type.as_str(), info.desktop.as_str()]
+        .iter()
+        .filter(|s| !s.is_empty())
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(" ");
+    rows.push((
+        "Session".into(),
+        if session.is_empty() {
+            "unknown".into()
+        } else {
+            session
+        },
+    ));
 
     rows.push((
         "User".into(),
@@ -409,40 +368,30 @@ pub fn report(info: &SystemInfo) -> Vec<(String, String)> {
         ),
     ));
 
-    if info.is_linux() {
-        rows.push((
-            "Flatpak".into(),
-            if info.flatpak {
-                "available".into()
-            } else {
-                "not available".into()
-            },
-        ));
-        rows.push((
-            "Snap".into(),
-            if info.snap {
-                "available".into()
-            } else {
-                "not available".into()
-            },
-        ));
-    }
+    rows.push((
+        "Flatpak".into(),
+        if info.flatpak {
+            "available".into()
+        } else {
+            "not available".into()
+        },
+    ));
+    rows.push((
+        "Snap".into(),
+        if info.snap {
+            "available".into()
+        } else {
+            "not available".into()
+        },
+    ));
 
     if info.arch_supported() {
-        let source = if info.is_linux() && info.arch == "amd64" {
-            "Chrome package"
-        } else if info.is_linux() {
-            "Chrome package"
-        } else {
-            "Google CRX package"
-        };
         rows.push((
             "Widevine source".into(),
             format!(
-                "{} / {} ({})",
+                "{} / {} (Chrome package)",
                 info.platform_dir(),
-                info.lib_name(),
-                source
+                info.lib_name()
             ),
         ));
     }

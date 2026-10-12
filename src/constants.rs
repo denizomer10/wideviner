@@ -47,14 +47,6 @@ pub const ARCHES: &[(&str, ArchInfo)] = &[
             deb_arch: "arm64",
         },
     ),
-    (
-        "x86",
-        ArchInfo {
-            machine: &["i386", "i486", "i586", "i686", "x86", "ia32"],
-            label: "x86 (32-bit)",
-            deb_arch: "i386",
-        },
-    ),
 ];
 
 pub fn arch_info(arch: &str) -> Option<&'static ArchInfo> {
@@ -87,9 +79,8 @@ pub struct CdmPlatform {
     pub mozilla_key: Option<&'static str>,
 }
 
-pub const CDM_PLATFORMS: &[(&str, &str, CdmPlatform)] = &[
+pub const CDM_PLATFORMS: &[(&str, CdmPlatform)] = &[
     (
-        "linux",
         "amd64",
         CdmPlatform {
             dir: "linux_x64",
@@ -98,7 +89,6 @@ pub const CDM_PLATFORMS: &[(&str, &str, CdmPlatform)] = &[
         },
     ),
     (
-        "linux",
         "arm64",
         CdmPlatform {
             dir: "linux_arm64",
@@ -106,40 +96,13 @@ pub const CDM_PLATFORMS: &[(&str, &str, CdmPlatform)] = &[
             mozilla_key: None,
         },
     ),
-    (
-        "windows",
-        "amd64",
-        CdmPlatform {
-            dir: "win_x64",
-            lib: "widevinecdm.dll",
-            mozilla_key: Some("WINNT_x86_64-msvc"),
-        },
-    ),
-    (
-        "windows",
-        "arm64",
-        CdmPlatform {
-            dir: "win_arm64",
-            lib: "widevinecdm.dll",
-            mozilla_key: Some("WINNT_aarch64-msvc-aarch64"),
-        },
-    ),
-    (
-        "windows",
-        "x86",
-        CdmPlatform {
-            dir: "win_x86",
-            lib: "widevinecdm.dll",
-            mozilla_key: Some("WINNT_x86-msvc"),
-        },
-    ),
 ];
 
-pub fn cdm_platform(os_name: &str, arch: &str) -> Option<&'static CdmPlatform> {
+pub fn cdm_platform(arch: &str) -> Option<&'static CdmPlatform> {
     CDM_PLATFORMS
         .iter()
-        .find(|(os, a, _)| *os == os_name && *a == arch)
-        .map(|(_, _, platform)| platform)
+        .find(|(a, _)| *a == arch)
+        .map(|(_, platform)| platform)
 }
 
 // ---------------------------------------------------------------------------
@@ -219,10 +182,7 @@ pub const CHROMIUM_PROFILE: &str = "chromium";
 
 /// Return the profile directory name for a Chromium based browser.
 pub fn chromium_profile_name(binary_name: &str) -> &'static str {
-    let name = binary_name
-        .to_lowercase()
-        .trim_end_matches(".exe")
-        .to_string();
+    let name = binary_name.to_lowercase();
     if name.starts_with("chromium") || name == "ungoogled-chromium" {
         return CHROMIUM_PROFILE;
     }

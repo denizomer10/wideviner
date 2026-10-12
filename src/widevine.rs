@@ -5,9 +5,9 @@
 //! * **Chrome package (Linux)** — Google's stable Chrome `.deb` from
 //!   `dl.google.com` always contains the current CDM. The CDM sits near the
 //!   start of the archive, so a partial HTTP range download is usually enough.
-//! * **Google CRX package (Windows, Linux fallback)** — Mozilla publishes a
-//!   manifest that lists the official Google download URLs and SHA-512 hashes
-//!   of the current Widevine CRX for every platform.
+//! * **Google CRX package (fallback)** — Mozilla publishes a manifest that
+//!   lists the official Google download URLs and SHA-512 hashes of the current
+//!   Widevine CRX for every platform.
 
 use std::collections::HashMap;
 use std::fs;
@@ -41,14 +41,6 @@ pub struct CdmPayload {
 
 /// Return the platform's cache directory.
 pub fn cache_root() -> PathBuf {
-    if cfg!(windows) {
-        if let Some(base) = std::env::var_os("LOCALAPPDATA") {
-            return PathBuf::from(base).join(C::APP_NAME);
-        }
-        return dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(format!(".{}", C::APP_NAME));
-    }
     if let Some(base) = std::env::var_os("XDG_CACHE_HOME") {
         return PathBuf::from(base).join(C::APP_NAME);
     }
@@ -274,7 +266,7 @@ fn fetch_from_deb(
 }
 
 // ---------------------------------------------------------------------------
-// Source: Google CRX via Mozilla's GMP manifest (Windows, Linux fallback)
+// Source: Google CRX via Mozilla's GMP manifest (fallback)
 // ---------------------------------------------------------------------------
 fn load_mozilla_manifest(cache_dir: &Path, reporter: Reporter, refresh: bool) -> Result<serde_json::Value, String> {
     let cache_path = cache_dir.join("mozilla-widevinecdm.json");

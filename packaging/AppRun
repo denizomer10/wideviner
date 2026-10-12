@@ -1,0 +1,11 @@
+#!/bin/sh
+# wideviner AppRun - start the application with the bundled libraries.
+#
+# Using LD_LIBRARY_PATH avoids having to patch the rpath of the binary and the
+# libraries, so the same script works for every architecture.
+
+HERE="$(dirname "$(readlink -f "$0")")"
+
+export LD_LIBRARY_PATH="$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+exec "$HERE/usr/bin/wideviner" "$@"

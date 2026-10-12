@@ -176,7 +176,7 @@ fn read_head(path: &Path, length: usize) -> std::io::Result<Vec<u8>> {
 /// Check whether a binary name looks like Firefox or one of its forks.
 pub fn is_firefox_name(name: &str) -> bool {
     let lowered = name.to_lowercase();
-    let lowered = lowered.trim_end_matches(".exe");
+    let lowered = lowered.as_str();
     if C::FIREFOX_BINARIES.contains(&lowered) {
         return true;
     }
@@ -271,14 +271,7 @@ fn profile_roots(si: &SystemInfo, source: &str) -> Vec<PathBuf> {
     } else if si.is_linux() && source == "snap" {
         roots.push(si.home.join("snap/firefox/common/.mozilla/firefox"));
     }
-    if si.is_windows() {
-        let base = std::env::var_os("APPDATA")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| si.home.join("AppData").join("Roaming"));
-        roots.push(base.join("Mozilla").join("Firefox"));
-    } else {
-        roots.push(si.home.join(".mozilla").join("firefox"));
-    }
+    roots.push(si.home.join(".mozilla").join("firefox"));
     roots
 }
 
@@ -350,15 +343,8 @@ fn find_profile(si: &SystemInfo, source: &str) -> Option<PathBuf> {
 // ---------------------------------------------------------------------------
 // Candidate collection
 // ---------------------------------------------------------------------------
-fn binary_names(si: &SystemInfo) -> Vec<String> {
-    if si.is_windows() {
-        C::FIREFOX_BINARIES
-            .iter()
-            .map(|name| format!("{}.exe", name))
-            .collect()
-    } else {
-        C::FIREFOX_BINARIES.iter().map(|s| s.to_string()).collect()
-    }
+fn binary_names(_si: &SystemInfo) -> Vec<String> {
+    C::FIREFOX_BINARIES.iter().map(|s| s.to_string()).collect()
 }
 
 fn path_candidates(si: &SystemInfo) -> Vec<PathBuf> {
@@ -429,9 +415,7 @@ fn package_candidates(si: &SystemInfo) -> Vec<PathBuf> {
 }
 
 fn scan_candidates(si: &SystemInfo) -> Vec<PathBuf> {
-    if si.is_windows() {
-        return windows_candidates();
-    }
+    let _ = si;
     let names: HashSet<&str> = C::FIREFOX_BINARIES.iter().copied().collect();
     let mut paths = Vec::new();
     for directory in C::FIREFOX_SCAN_DIRS {
@@ -442,25 +426,6 @@ fn scan_candidates(si: &SystemInfo) -> Vec<PathBuf> {
         for name in &names {
             let candidate = base.join(name);
             if looks_like_firefox(&candidate) {
-                paths.push(candidate);
-            }
-        }
-    }
-    paths
-}
-
-fn windows_candidates() -> Vec<PathBuf> {
-    let mut bases = Vec::new();
-    for variable in ["PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA"] {
-        if let Some(value) = std::env::var_os(variable) {
-            bases.push(PathBuf::from(value));
-        }
-    }
-    let mut paths = Vec::new();
-    for base in bases {
-        for relative in ["Mozilla Firefox", "Firefox", "LibreWolf", "Waterfox"] {
-            let candidate = base.join(relative).join("firefox.exe");
-            if candidate.is_file() {
                 paths.push(candidate);
             }
         }

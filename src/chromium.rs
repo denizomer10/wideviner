@@ -52,13 +52,6 @@ const BAD_PARENT_DIRS: &[&str] = &[
     "xdg-autostart",
 ];
 
-/// Windows install locations (relative to the usual base directories).
-const WINDOWS_INSTALL_PATHS: &[(&str, &str)] = &[
-    ("Chromium/Application", "chrome.exe"),
-    ("Chromium", "chrome.exe"),
-    ("ungoogled-chromium", "chrome.exe"),
-];
-
 /// A discovered Chromium installation.
 #[derive(Debug, Clone)]
 pub struct Chromium {
@@ -85,14 +78,7 @@ impl Chromium {
     /// Distribution packages often install a small wrapper script that launches
     /// the real binary (`chrome`/`chromium`) next to it.
     pub fn executable(&self) -> PathBuf {
-        for candidate in [
-            "chrome",
-            "chromium",
-            "chrome.exe",
-            "chromium.exe",
-            "google-chrome",
-            "Google Chrome",
-        ] {
+        for candidate in ["chrome", "chromium", "google-chrome", "Google Chrome"] {
             let path = self.module_dir.join(candidate);
             if path.is_file() {
                 return path;
@@ -362,15 +348,9 @@ pub fn find_binary_in(root: &Path, name: &str, max_depth: usize) -> Option<PathB
     if !root.is_dir() {
         return None;
     }
-    let wanted: HashSet<String> = [
-        name.to_string(),
-        "chrome".to_string(),
-        "chromium".to_string(),
-        "chrome.exe".to_string(),
-        "chromium.exe".to_string(),
-    ]
-    .into_iter()
-    .collect();
+    let wanted: HashSet<String> = [name.to_string(), "chrome".to_string(), "chromium".to_string()]
+        .into_iter()
+        .collect();
     walk(root, max_depth, &mut |path| {
         let file_name = path.file_name()?.to_string_lossy().to_string();
         if wanted.contains(&file_name) && looks_like_browser(path) {
@@ -412,29 +392,6 @@ where
     None
 }
 
-/// Find the directory that holds the browser's resources.
-fn versioned_module_dir(binary: &Path) -> PathBuf {
-    let parent = binary.parent().unwrap_or(Path::new(".")).to_path_buf();
-    // Windows: Chromium/Application/<version>/chrome.exe
-    if parent
-        .file_name()
-        .map(|n| n == "Application")
-        .unwrap_or(false)
-    {
-        let mut versions: Vec<PathBuf> = fs::read_dir(&parent)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|entry| entry.path())
-            .filter(|path| path.is_dir())
-            .collect();
-        versions.sort();
-        if let Some(last) = versions.pop() {
-            return last;
-        }
-    }
-    parent
-}
 
 // ---------------------------------------------------------------------------
 // Profile discovery
@@ -564,15 +521,8 @@ fn resolve_user_data_dir(si: &SystemInfo, binary: &Path) -> Option<PathBuf> {
 // ---------------------------------------------------------------------------
 // Candidate collection
 // ---------------------------------------------------------------------------
-fn binary_names(si: &SystemInfo) -> Vec<String> {
-    if si.is_windows() {
-        C::BROWSER_BINARIES
-            .iter()
-            .map(|name| format!("{}.exe", name))
-            .collect()
-    } else {
-        C::BROWSER_BINARIES.iter().map(|s| s.to_string()).collect()
-    }
+fn binary_names(_si: &SystemInfo) -> Vec<String> {
+    C::BROWSER_BINARIES.iter().map(|s| s.to_string()).collect()
 }
 
 fn path_candidates(si: &SystemInfo) -> Vec<PathBuf> {
@@ -640,29 +590,8 @@ fn package_candidates(si: &SystemInfo) -> Vec<PathBuf> {
     paths
 }
 
-fn windows_candidates() -> Vec<PathBuf> {
-    let mut bases = Vec::new();
-    for variable in ["PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA", "PROGRAMDATA"] {
-        if let Some(value) = std::env::var_os(variable) {
-            bases.push(PathBuf::from(value));
-        }
-    }
-    let mut paths = Vec::new();
-    for base in bases {
-        for (relative, executable) in WINDOWS_INSTALL_PATHS {
-            let candidate = base.join(relative).join(executable);
-            if candidate.is_file() {
-                paths.push(candidate);
-            }
-        }
-    }
-    paths
-}
-
 fn scan_candidates(si: &SystemInfo, deep: bool) -> Vec<PathBuf> {
-    if si.is_windows() {
-        return windows_candidates();
-    }
+    let _ = si;
     let names: HashSet<&str> = C::BROWSER_BINARIES.iter().copied().collect();
     let mut paths = Vec::new();
 
@@ -791,7 +720,9 @@ pub fn build_browser(
         return None;
     }
 
-    let module_dir = module_dir.unwrap_or_else(|| versioned_module_dir(&real));
+    let module_dir = module_dir.unwrap_or_else(|| {
+        real.parent().unwrap_or(Path::new(".")).to_path_buf()
+    });
     let source = source
         .map(|s| s.to_string())
         .unwrap_or_else(|| package_source(&real));

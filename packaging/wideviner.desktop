@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=wideviner
+GenericName=Widevine CDM installer
+Comment=Install the Widevine CDM into Chromium and Firefox
+Exec=wideviner
+Icon=wideviner
+Terminal=false
+Categories=Utility;System;
+Keywords=widevine;drm;cdm;chromium;firefox;
+StartupNotify=true

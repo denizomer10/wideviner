@@ -1,0 +1,8 @@
+# Cross-compilation settings.
+#
+# Building the ARM64 binary on an x86_64 host needs the aarch64 toolchain
+# (`gcc-aarch64-linux-gnu`) and the ARM64 development libraries. See the
+# "Cross-compiling the ARM64 AppImage" section in the README.
+
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
